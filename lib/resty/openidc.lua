@@ -1464,18 +1464,81 @@ local function openidc_get_bearer_access_token_from_cookie(opts)
 end
 
 
--- get an OAuth 2.0 bearer access token from the HTTP request
-local function openidc_get_bearer_access_token(opts)
-
+-- try to extract token from Authorization header
+local function openidc_get_bearer_access_token_from_header(opts)
   local err
+
+  local headers = ngx.req.get_headers()
+  local header_name = opts.auth_accept_token_as_header_name or "Authorization"
+  local header = headers[header_name]
+
+  if header == nil or header:find(" ") == nil then
+    err = "no Authorization header found"
+    log(WARN, err)
+    return nil, err
+  end
+
+  local divider = header:find(' ')
+  if string.lower(header:sub(0, divider - 1)) ~= string.lower("Bearer") then
+    err = "no Bearer authorization header value found"
+    log(WARN, err)
+    return nil, err
+  end
+
+  local access_token = header:sub(divider + 1)
+  if access_token == nil then
+    err = "no Bearer access token value found"
+    log(WARN, err)
+    return nil, err
+  end
+
+  return access_token, err
+end
+
+
+-- try to extract token from access_token query parameter
+local function openidc_get_bearer_access_token_from_query(opts)
+  local err
+
+  local args, args_err = ngx.req.get_uri_args()
+
+  if args_err ~= nil then
+    err = "ngx.req.get_uri_args() failed: " .. args_err
+    log(WARN, err)
+    return nil, err
+  end
+
+  local access_token = args["access_token"]
+
+  if access_token == nil then
+    err = "no access_token in query string"
+    log(WARN, err)
+    return nil, err
+  end
+
+  return access_token, err
+end
+
+
+-- get an OAuth 2.0 bearer access token from the HTTP request
+function openidc.get_bearer_access_token(opts)
+--local function openidc_get_bearer_access_token(opts)
 
   local accept_token_as = opts.auth_accept_token_as or "header"
 
+  -- TODO: allow multiple auth_accept_token_as options
   if accept_token_as:find("cookie") == 1 then
     return openidc_get_bearer_access_token_from_cookie(opts)
   end
 
-  -- get the access token from the Authorization header
+  -- try to get the access token from the Authorization header
+  local header_token, header_err = openidc_get_bearer_access_token_from_header(opts)
+
+  if header_token == nil or header_err ~= nil then
+    local query_token, query_err = openidc_get_bearer_access_token_from_query(opts)
+  end
+
+
   local headers = ngx.req.get_headers()
   local header_name = opts.auth_accept_token_as_header_name or "Authorization"
   local header = headers[header_name]
@@ -1507,7 +1570,7 @@ end
 function openidc.introspect(opts)
 
   -- get the access token from the request
-  local access_token, err = openidc_get_bearer_access_token(opts)
+  local access_token, err = openidc.get_bearer_access_token(opts)
   if access_token == nil then
     return nil, err
   end
@@ -1622,7 +1685,7 @@ function openidc.bearer_jwt_verify(opts, ...)
   local json
 
   -- get the access token from the request
-  local access_token, err = openidc_get_bearer_access_token(opts)
+  local access_token, err = openidc.get_bearer_access_token(opts)
   if access_token == nil then
     return nil, err
   end

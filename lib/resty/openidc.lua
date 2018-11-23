@@ -1474,25 +1474,25 @@ local function openidc_get_bearer_access_token_from_header(opts)
 
   if header == nil or header:find(" ") == nil then
     err = "no Authorization header found"
-    log(WARN, err)
+    --log(WARN, err)
     return nil, err
   end
 
   local divider = header:find(' ')
   if string.lower(header:sub(0, divider - 1)) ~= string.lower("Bearer") then
     err = "no Bearer authorization header value found"
-    log(WARN, err)
+    --log(WARN, err)
     return nil, err
   end
 
   local access_token = header:sub(divider + 1)
   if access_token == nil then
     err = "no Bearer access token value found"
-    log(WARN, err)
+    --log(WARN, err)
     return nil, err
   end
 
-  return access_token, err
+  return access_token, nil
 end
 
 
@@ -1504,7 +1504,7 @@ local function openidc_get_bearer_access_token_from_query(opts)
 
   if args_err ~= nil then
     err = "ngx.req.get_uri_args() failed: " .. args_err
-    log(WARN, err)
+    --log(WARN, err)
     return nil, err
   end
 
@@ -1512,7 +1512,7 @@ local function openidc_get_bearer_access_token_from_query(opts)
 
   if access_token == nil then
     err = "no access_token in query string"
-    log(WARN, err)
+    --log(WARN, err)
     return nil, err
   end
 
@@ -1532,38 +1532,20 @@ function openidc.get_bearer_access_token(opts)
   end
 
   -- try to get the access token from the Authorization header
-  local header_token, header_err = openidc_get_bearer_access_token_from_header(opts)
+  local access_token, header_err = openidc_get_bearer_access_token_from_header(opts)
 
-  if header_token == nil or header_err ~= nil then
-    local query_token, query_err = openidc_get_bearer_access_token_from_query(opts)
-  end
-
-
-  local headers = ngx.req.get_headers()
-  local header_name = opts.auth_accept_token_as_header_name or "Authorization"
-  local header = headers[header_name]
-
-  if header == nil or header:find(" ") == nil then
-    err = "no Authorization header found"
-    log(ERROR, err)
-    return nil, err
-  end
-
-  local divider = header:find(' ')
-  if string.lower(header:sub(0, divider - 1)) ~= string.lower("Bearer") then
-    err = "no Bearer authorization header value found"
-    log(ERROR, err)
-    return nil, err
-  end
-
-  local access_token = header:sub(divider + 1)
+  local query_err
   if access_token == nil then
-    err = "no Bearer access token value found"
+    access_token, query_err = openidc_get_bearer_access_token_from_query(opts)
+  end
+
+  if access_token == nil then
+    local err = header_err .. ", " .. query_err
     log(ERROR, err)
     return nil, err
   end
 
-  return access_token, err
+  return access_token, nil
 end
 
 -- main routine for OAuth 2.0 token introspection
